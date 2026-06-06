@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>FactDaily — 5 Facts a Day</title>
+  <title>5 Daily Facts</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Lora:ital,wght@0,500;1,400&display=swap');
 
@@ -66,7 +66,8 @@
     .deck{width:100%}
 
     /* Card — plain block, no absolute positioning */
-    .card{width:100%;background:var(--card);border-radius:var(--r-card);box-shadow:var(--shadow);padding:1.8rem 2rem 1.2rem;transform-origin:bottom center;display:flex;flex-direction:column;aspect-ratio:600/800}
+    .card{width:100%;background:var(--card);border-radius:var(--r-card);box-shadow:var(--shadow);padding:1.8rem 2rem 1.2rem;transform-origin:bottom center;display:flex;flex-direction:column;aspect-ratio:600/800;cursor:grab;user-select:none}
+    .card:active{cursor:grabbing}
     .card-enter-right{animation:enterFromRight .38s cubic-bezier(.22,1,.36,1) both}
     .card-enter-left{animation:enterFromLeft .38s cubic-bezier(.22,1,.36,1) both}
     .card-exit-left{animation:exitToLeft .45s ease-out forwards;pointer-events:none}
@@ -130,8 +131,8 @@
 
 <header class="hero">
   <p class="hero-date" id="hero-date"></p>
-  <h1 class="hero-title">Daily Facts.</h1>
-  <p class="hero-sub">Science, Animals, History, Space, Human Body &amp; Weird Facts — curated from Wikipedia.</p>
+  <h1 class="hero-title">5 Daily Facts.</h1>
+  <p class="hero-sub">Curated from Wikipedia.</p>
 </header>
 
 <main class="stage">
@@ -566,12 +567,111 @@ document.addEventListener("keydown", e => {
   if (e.key === "ArrowLeft"  || e.key === "ArrowUp")   navigate(-1);
 });
 
-let touchStartX = 0;
-document.addEventListener("touchstart", e => { touchStartX = e.touches[0].clientX; }, {passive:true});
-document.addEventListener("touchend",   e => {
-  const dx = e.changedTouches[0].clientX - touchStartX;
-  if (Math.abs(dx) > 50) navigate(dx < 0 ? 1 : -1);
+// ═══════════════════════════════════════════════════════════
+//  TINDER-STYLE DRAG SWIPE
+// ═══════════════════════════════════════════════════════════
+const SWIPE_THRESHOLD = 80;   // px to commit a swipe
+const MAX_ROTATION    = 28;   // degrees at full drag
+
+let dragStartX = 0;
+let dragStartY = 0;
+let dragging   = false;
+let dragCard   = null;
+
+function getCard() {
+  return document.querySelector(".card");
+}
+
+function onDragStart(clientX, clientY) {
+  if (transitioning) return;
+  dragCard = getCard();
+  if (!dragCard) return;
+  dragging   = true;
+  dragStartX = clientX;
+  dragStartY = clientY;
+  dragCard.style.transition = "none";
+  dragCard.style.willChange = "transform";
+}
+
+function onDragMove(clientX) {
+  if (!dragging || !dragCard) return;
+  const dx      = clientX - dragStartX;
+  const ratio   = Math.min(Math.abs(dx) / 200, 1);
+  const rotate  = dx > 0
+    ? ratio * MAX_ROTATION
+    : -(ratio * MAX_ROTATION);
+  dragCard.style.transform = `translateX(${dx}px) rotate(${rotate}deg)`;
+  dragCard.style.opacity   = String(1 - ratio * 0.25);
+}
+
+function onDragEnd(clientX) {
+  if (!dragging || !dragCard) return;
+  dragging = false;
+  const dx  = clientX - dragStartX;
+  const dir = dx > 0 ? -1 : 1;   // swipe right = go back, swipe left = go forward
+
+  if (Math.abs(dx) >= SWIPE_THRESHOLD) {
+    // Commit — fling the card off screen
+    const flyX   = dx > 0 ?  window.innerWidth : -window.innerWidth;
+    const flyRot = dx > 0 ? MAX_ROTATION : -MAX_ROTATION;
+    dragCard.style.transition = "transform 0.35s ease-out, opacity 0.35s ease-out";
+    dragCard.style.transform  = `translateX(${flyX}px) rotate(${flyRot}deg)`;
+    dragCard.style.opacity    = "0";
+    setTimeout(() => {
+      if (dragCard) dragCard.remove();
+      dragCard = null;
+      const next = current + dir;
+      if (next >= 0 && next < facts.length) {
+        current = next;
+        const enterClass = dir > 0 ? "card-enter-right" : "card-enter-left";
+        const f    = facts[current];
+        const deck = $("deck");
+        deck.className = `deck ${f.theme}`;
+        const card = buildCard(f, current);
+        card.classList.add(enterClass);
+        deck.appendChild(card);
+        updateDots(current);
+        $("btn-prev").disabled = current === 0;
+        $("btn-next").disabled = current === facts.length - 1;
+        if (!f.image) tryLoadImage(f, current);
+        setTimeout(() => { transitioning = false; }, 400);
+      } else {
+        transitioning = false;
+      }
+    }, 360);
+    transitioning = true;
+  } else {
+    // Snap back
+    dragCard.style.transition = "transform 0.35s cubic-bezier(.22,1,.36,1), opacity 0.25s ease";
+    dragCard.style.transform  = "translateX(0) rotate(0deg)";
+    dragCard.style.opacity    = "1";
+    dragCard = null;
+  }
+}
+
+// Touch
+document.addEventListener("touchstart", e => {
+  onDragStart(e.touches[0].clientX, e.touches[0].clientY);
 }, {passive:true});
+
+document.addEventListener("touchmove", e => {
+  onDragMove(e.touches[0].clientX);
+}, {passive:true});
+
+document.addEventListener("touchend", e => {
+  onDragEnd(e.changedTouches[0].clientX);
+}, {passive:true});
+
+// Mouse (for desktop testing)
+document.addEventListener("mousedown", e => {
+  if (e.target.closest(".card")) onDragStart(e.clientX, e.clientY);
+});
+document.addEventListener("mousemove", e => {
+  if (dragging) onDragMove(e.clientX);
+});
+document.addEventListener("mouseup", e => {
+  if (dragging) onDragEnd(e.clientX);
+});
 
 // ═══════════════════════════════════════════════════════════
 //  BOOT
