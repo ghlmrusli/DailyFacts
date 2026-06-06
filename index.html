@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FactDaily — 5 Facts a Day</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&family=Lora:ital,wght@0,500;1,400&display=swap');
+
+    :root {
+      --bg:           #e8e4f3;
+      --card:         #ffffff;
+      --ink:          #1a1730;
+      --ink-mid:      #5a5470;
+      --ink-soft:     #9590aa;
+      --accent:       #6c5ce7;
+      --accent-hover: #5a4bd1;
+      --r-card: 22px;
+      --r-pill: 100px;
+      --shadow: 0 12px 48px rgba(60,48,100,.16);
+      --font-ui:   'Sora', system-ui, sans-serif;
+      --font-body: 'Lora', Georgia, serif;
+    }
+
+    .theme-science { --cat-bg:#dff3ff;--cat-fg:#1565a8;--cat-bd:#b3dcf5;--b1:#b8dbf5;--b2:#d4eeff; }
+    .theme-animals { --cat-bg:#dff6ee;--cat-fg:#1a7a4a;--cat-bd:#a8e4c8;--b1:#a8dfc0;--b2:#c8f0da; }
+    .theme-history { --cat-bg:#fff0dc;--cat-fg:#9a5a00;--cat-bd:#f5d89a;--b1:#f5c878;--b2:#fde8a8; }
+    .theme-space   { --cat-bg:#ede0ff;--cat-fg:#6020b0;--cat-bd:#d0b0f8;--b1:#c8a0f0;--b2:#e0c8ff; }
+    .theme-body    { --cat-bg:#ffe0e8;--cat-fg:#a81040;--cat-bd:#f8b0c8;--b1:#f59ab8;--b2:#fcc8d8; }
+    .theme-weird   { --cat-bg:#fff8dc;--cat-fg:#8a6000;--cat-bd:#f0d890;--b1:#f0c860;--b2:#fce890; }
+
+    *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+    a{color:inherit;text-decoration:none}
+    img{display:block;width:100%}
+    button{cursor:pointer;font:inherit;border:none;background:none}
+    html{scroll-behavior:smooth}
+
+    body{
+      background:var(--bg);color:var(--ink);font-family:var(--font-ui);
+      min-height:100vh;display:flex;flex-direction:column;align-items:center;justify-content:center;
+      overflow-x:hidden;position:relative;
+    }
+
+    .page-wrap{
+      position:relative;z-index:10;
+      width:100%;max-width:480px;
+      display:flex;flex-direction:column;align-items:center;
+      padding:max(2rem, env(safe-area-inset-top)) 1.5rem max(2rem, env(safe-area-inset-bottom));
+    }
+
+    /* Blobs */
+    .blob{position:fixed;border-radius:50%;filter:blur(90px);opacity:.4;pointer-events:none;z-index:0}
+    .blob-1{width:500px;height:500px;background:#c4b5f4;top:-150px;left:-160px;animation:drift 14s ease-in-out infinite alternate}
+    .blob-2{width:380px;height:380px;background:#f5c6a0;bottom:20px;right:-100px;animation:drift 18s ease-in-out infinite alternate-reverse}
+    .blob-3{width:280px;height:280px;background:#a8eddb;bottom:220px;left:40px;animation:drift 22s ease-in-out infinite alternate}
+    @keyframes drift{from{transform:translate(0,0) scale(1)}to{transform:translate(28px,18px) scale(1.06)}}
+
+    /* Hero */
+    .hero{width:100%;text-align:center;padding-bottom:1.8rem;animation:fadeDown .6s ease both .1s}
+    .hero-date{font-size:.7rem;font-weight:500;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);margin-bottom:.5rem}
+    .hero-title{font-size:clamp(2.4rem,6vw,3.6rem);font-weight:700;line-height:1.1;letter-spacing:-.03em;color:var(--ink);margin-bottom:.6rem}
+    .hero-sub{font-size:.88rem;color:var(--ink-mid);font-weight:300;line-height:1.65}
+
+    /* Stage — no overflow:hidden so card box-shadow isn't clipped */
+    .stage{width:100%;padding:0 2px 1.5rem}
+    .deck{width:100%}
+
+    /* Card — plain block, no absolute positioning */
+    .card{width:100%;background:var(--card);border-radius:var(--r-card);box-shadow:var(--shadow);padding:1.8rem 2rem 1.2rem;transform-origin:bottom center;display:flex;flex-direction:column;aspect-ratio:600/800}
+    .card-enter-right{animation:enterFromRight .38s cubic-bezier(.22,1,.36,1) both}
+    .card-enter-left{animation:enterFromLeft .38s cubic-bezier(.22,1,.36,1) both}
+    .card-exit-left{animation:exitToLeft .45s ease-out forwards;pointer-events:none}
+    .card-exit-right{animation:exitToRight .45s ease-out forwards;pointer-events:none}
+    @keyframes enterFromRight{from{opacity:0;transform:translateX(60px) rotate(8deg)}to{opacity:1;transform:translateX(0) rotate(0deg)}}
+    @keyframes enterFromLeft{from{opacity:0;transform:translateX(-60px) rotate(-8deg)}to{opacity:1;transform:translateX(0) rotate(0deg)}}
+    @keyframes exitToLeft{0%{opacity:1;transform:translateX(0) rotate(0deg)}100%{opacity:0;transform:translateX(-75%) rotate(-28deg)}}
+    @keyframes exitToRight{0%{opacity:1;transform:translateX(0) rotate(0deg)}100%{opacity:0;transform:translateX(75%) rotate(28deg)}}
+
+    .card-toprow{display:flex;align-items:flex-start;justify-content:space-between;gap:.75rem;margin-bottom:1.1rem}
+    .fact-title{font-size:1.35rem;font-weight:700;line-height:1.25;letter-spacing:-.02em;color:var(--ink);flex:1}
+    .fact-counter{font-size:.7rem;font-weight:600;color:var(--ink-soft);white-space:nowrap;padding-top:.2rem}
+
+    .fact-date{font-size:.74rem;color:var(--ink-soft);margin-bottom:1rem}
+
+    .fact-image-wrap{border-radius:12px;overflow:hidden;margin-bottom:1.1rem;border:1px solid rgba(0,0,0,.05);background:#f0eef8;min-height:60px;display:flex;align-items:center;justify-content:center}
+    .fact-image-wrap img{max-height:220px;object-fit:cover;width:100%;transition:transform .5s ease}
+    .fact-image-wrap:hover img{transform:scale(1.03)}
+    .img-placeholder{font-size:3rem;padding:1.5rem}
+
+    .fact-text-wrap{flex:1;overflow:hidden;position:relative;margin-bottom:1.2rem}
+    .fact-text-wrap::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2.5rem;background:linear-gradient(transparent,#fff);pointer-events:none}
+    .fact-text{font-family:var(--font-ui);font-size:.9rem;font-style:normal;font-weight:300;line-height:1.7;color:var(--ink-mid)}
+
+    .pill{font-size:.62rem;font-weight:600;letter-spacing:.06em;text-transform:uppercase;padding:.25rem .7rem;border-radius:var(--r-pill);border:1.5px solid transparent}
+    .pill-cat{background:var(--cat-bg);color:var(--cat-fg);border-color:var(--cat-bd)}
+
+    .card-rule{height:1px;background:linear-gradient(90deg,transparent,#e8e4f0 20%,#e8e4f0 80%,transparent);margin-bottom:.75rem}
+
+    .cta{display:inline-flex;align-items:center;gap:.35rem;background:var(--accent);color:#fff;font-size:.62rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:.25rem .75rem;border-radius:var(--r-pill);border:1.5px solid transparent;transition:background .2s,transform .15s,gap .2s}
+    .cta:hover{background:var(--accent-hover);transform:translateY(-1px);gap:.5rem}
+    .cta:active{transform:translateY(0)}
+
+    .tags-row{display:flex;align-items:center;justify-content:space-between;gap:.4rem;margin-bottom:0}
+
+    /* Arrow nav */
+    .nav-arrows{display:flex;gap:.75rem;justify-content:center;margin-bottom:1.5rem}
+    .arrow-btn{width:44px;height:44px;border-radius:50%;background:rgba(255,255,255,.75);border:1.5px solid rgba(255,255,255,.9);backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;color:var(--ink-mid);transition:background .2s,transform .15s,color .2s;box-shadow:0 2px 12px rgba(60,48,100,.1)}
+    .arrow-btn:hover{background:#fff;color:var(--accent);transform:scale(1.08)}
+    .arrow-btn:disabled{opacity:.28;pointer-events:none}
+
+    /* Footer */
+    .site-footer{font-size:.7rem;color:var(--ink-soft);text-align:center;padding-bottom:.5rem}
+    .site-footer a{text-decoration:underline;text-underline-offset:2px;color:var(--ink-soft);transition:color .2s}
+    .site-footer a:hover{color:var(--accent)}
+
+    @keyframes fadeDown{from{opacity:0;transform:translateY(-10px)}to{opacity:1;transform:translateY(0)}}
+
+    @media(max-width:500px){
+      .card{padding:1.5rem 1.3rem 1.3rem}
+    }
+  </style>
+</head>
+<body>
+
+<div class="blob blob-1"></div>
+<div class="blob blob-2"></div>
+<div class="blob blob-3"></div>
+
+<div class="page-wrap">
+
+<header class="hero">
+  <p class="hero-date" id="hero-date"></p>
+  <h1 class="hero-title">Daily Facts.</h1>
+  <p class="hero-sub">Science, Animals, History, Space, Human Body &amp; Weird Facts — curated from Wikipedia.</p>
+</header>
+
+<main class="stage">
+  <div class="deck" id="deck">
+    <!-- cards injected here -->
+  </div>
+</main>
+
+<div class="nav-arrows">
+  <button class="arrow-btn" id="btn-prev" onclick="navigate(-1)" aria-label="Previous">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+  </button>
+  <button class="arrow-btn" id="btn-next" onclick="navigate(1)" aria-label="Next">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+  </button>
+</div>
+
+<footer class="site-footer">
+  <p>Content from <a href="https://wikipedia.org" target="_blank" rel="noopener">Wikipedia</a> · <a href="https://creativecommons.org/licenses/by-sa/4.0/" target="_blank" rel="noopener">CC BY-SA 4.0</a></p>
+</footer>
+
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+//  FACTS POOL — hardcoded so the app works with zero network
+//  Each fact: { title, text, url, emoji (fallback image) }
+// ═══════════════════════════════════════════════════════════
+const POOL = {
+
+  science: {
+    name:"Science", icon:"🔬", theme:"theme-science",
+    facts:[
+      { title:"Octopus Blood is Blue",
+        text:"Octopuses have blue blood because they use haemocyanin — a copper-based molecule — to carry oxygen instead of the iron-based haemoglobin used by humans. Haemocyanin is less efficient at room temperature but works better in cold, low-oxygen water.",
+        url:"https://en.wikipedia.org/wiki/Haemocyanin", emoji:"🩵" },
+      { title:"Honey Never Spoils",
+        text:"Archaeologists have found 3,000-year-old honey in Egyptian tombs that was still perfectly edible. Honey's low moisture content, acidic pH, and natural hydrogen peroxide make it one of the few foods that never spoils if kept sealed.",
+        url:"https://en.wikipedia.org/wiki/Honey", emoji:"🍯" },
+      { title:"A Teaspoon of Neutron Star",
+        text:"A neutron star is so dense that a single teaspoon of its material would weigh about 10 million tonnes on Earth. These stellar remnants are only around 20 km across but contain more mass than our Sun.",
+        url:"https://en.wikipedia.org/wiki/Neutron_star", emoji:"⭐" },
+      { title:"Trees Communicate Underground",
+        text:"Forests contain vast underground networks of fungi called mycorrhizae that connect tree roots. Through these networks, trees share water, carbon, and nutrients — leading scientists to nickname it the 'Wood Wide Web'.",
+        url:"https://en.wikipedia.org/wiki/Mycorrhizal_network", emoji:"🌲" },
+      { title:"Lightning is Hotter Than the Sun",
+        text:"A bolt of lightning heats the surrounding air to around 30,000 Kelvin — roughly five times hotter than the surface of the Sun. This superheating causes the rapid expansion of air that we hear as thunder.",
+        url:"https://en.wikipedia.org/wiki/Lightning", emoji:"⚡" },
+      { title:"Glass is a Slow Liquid",
+        text:"Glass is technically an amorphous solid — its molecules are arranged like a liquid but move so slowly it behaves as a rigid solid. Ancient window glass is sometimes thicker at the bottom simply from centuries of very, very slow flow.",
+        url:"https://en.wikipedia.org/wiki/Glass", emoji:"🔮" },
+      { title:"Bananas are Radioactive",
+        text:"Bananas contain a small amount of potassium-40, a naturally radioactive isotope of potassium. The dose is minuscule — you would need to eat around 10 million bananas at once to receive a fatal radiation dose.",
+        url:"https://en.wikipedia.org/wiki/Banana_equivalent_dose", emoji:"🍌" },
+      { title:"Water Can Boil and Freeze at Once",
+        text:"At a specific pressure and temperature known as the 'triple point', water can simultaneously exist as solid, liquid, and gas. For pure water this occurs at exactly 273.16 K (0.01 °C) and 611.657 pascals.",
+        url:"https://en.wikipedia.org/wiki/Triple_point", emoji:"❄️" },
+    ]
+  },
+
+  animals: {
+    name:"Animals", icon:"🦎", theme:"theme-animals",
+    facts:[
+      { title:"Tardigrades Can Survive in Space",
+        text:"Tardigrades — microscopic animals also called 'water bears' — have survived exposure to the vacuum and radiation of outer space. They achieve this by entering a state called cryptobiosis, expelling all their water and essentially pausing all biological processes.",
+        url:"https://en.wikipedia.org/wiki/Tardigrade", emoji:"🐻" },
+      { title:"Mantis Shrimps See 16 Colour Channels",
+        text:"Humans see colour using 3 types of photoreceptor cells; mantis shrimps have 16 different types. Despite this, research suggests they actually process colour differently from humans — comparing colours rather than combining them.",
+        url:"https://en.wikipedia.org/wiki/Mantis_shrimp", emoji:"🦐" },
+      { title:"Crows Hold Grudges",
+        text:"Crows can recognise individual human faces and will remember people who have treated them badly, scolding and dive-bombing them years later. They have even been observed teaching other crows to dislike particular people.",
+        url:"https://en.wikipedia.org/wiki/Crow", emoji:"🐦‍⬛" },
+      { title:"Immortal Jellyfish",
+        text:"Turritopsis dohrnii, the 'immortal jellyfish', can revert its cells back to their earliest form and start its life cycle over again — effectively achieving biological immortality. It is the only known animal capable of this.",
+        url:"https://en.wikipedia.org/wiki/Turritopsis_dohrnii", emoji:"🪼" },
+      { title:"Elephants Have Earthquake Sense",
+        text:"Elephants can detect seismic vibrations through their feet and lower legs — and may be able to sense other elephant calls transmitted through the ground from hundreds of kilometres away. Their sensitive feet act like natural seismographs.",
+        url:"https://en.wikipedia.org/wiki/Elephant", emoji:"🐘" },
+      { title:"Pistol Shrimps Snap Plasma Bubbles",
+        text:"The pistol shrimp snaps its claw so fast it creates a cavitation bubble that collapses with a flash of light reaching temperatures of around 8,000°C — briefly as hot as the surface of the Sun — and a shockwave that stuns or kills prey.",
+        url:"https://en.wikipedia.org/wiki/Alpheidae", emoji:"🦞" },
+      { title:"Platypuses Glow Under UV Light",
+        text:"Under ultraviolet light, platypus fur fluoresces a cyan-green colour. Scientists don't yet know why, but similar UV fluorescence has since been discovered in many other mammals, suggesting it may be more widespread than previously thought.",
+        url:"https://en.wikipedia.org/wiki/Platypus", emoji:"🦆" },
+      { title:"Axolotls Regenerate Their Brains",
+        text:"The axolotl can regrow not just limbs, but also parts of its heart, spinal cord, and brain. They retain juvenile features throughout their lives — a trait called neoteny — and have become vital models for regenerative medicine research.",
+        url:"https://en.wikipedia.org/wiki/Axolotl", emoji:"🐸" },
+    ]
+  },
+
+  history: {
+    name:"History", icon:"🏛️", theme:"theme-history",
+    facts:[
+      { title:"Cleopatra Lived Closer to the Moon Landing than the Pyramids",
+        text:"Cleopatra VII died in 30 BC — approximately 2,500 years after the Great Pyramid of Giza was completed around 2560 BC, but only about 2,000 years before the 1969 Moon landing. The pyramids are far older than most people realise.",
+        url:"https://en.wikipedia.org/wiki/Cleopatra", emoji:"👑" },
+      { title:"The Great Fire Rebuilt London",
+        text:"The Great Fire of London in 1666 destroyed 13,200 houses and 87 churches. While devastating, it effectively ended the bubonic plague in the city by burning the rat-infested medieval slums, and led to the rebuilding of London in brick and stone.",
+        url:"https://en.wikipedia.org/wiki/Great_Fire_of_London", emoji:"🔥" },
+      { title:"Oxford University is Older than the Aztec Empire",
+        text:"Oxford University began teaching in some form from 1096 AD, making it over 900 years old. The Aztec Empire, by contrast, was founded in 1428 — meaning Oxford was already 300 years old before the Aztecs built Tenochtitlan.",
+        url:"https://en.wikipedia.org/wiki/University_of_Oxford", emoji:"📚" },
+      { title:"Napoleon Was Not Especially Short",
+        text:"Napoleon Bonaparte stood around 5 feet 6 inches (1.68 m) — average height for a Frenchman of his era. The myth of his shortness arose partly from British caricaturists and partly from a unit conversion error between French and English inches.",
+        url:"https://en.wikipedia.org/wiki/Napoleon", emoji:"🎖️" },
+      { title:"The Library of Alexandria Was Burned Multiple Times",
+        text:"The Library of Alexandria — the ancient world's greatest repository of knowledge — was not destroyed in a single dramatic fire. It declined gradually over centuries due to funding cuts, wars, and multiple partial burnings by Julius Caesar, Aurelian, and others.",
+        url:"https://en.wikipedia.org/wiki/Library_of_Alexandria", emoji:"📜" },
+      { title:"Vikings Navigated with Crystal Sunstones",
+        text:"Norse sagas mention 'sólarsteinn' (sunstones) used to find the Sun's position on cloudy days. Modern research suggests these were calcite crystals (Iceland spar) that polarise light, allowing navigation even in overcast conditions — centuries before the magnetic compass reached Europe.",
+        url:"https://en.wikipedia.org/wiki/Viking_navigation", emoji:"🧭" },
+      { title:"The Mongol Empire Had Free Postal Service",
+        text:"The Mongol Empire operated a sophisticated relay postal system called the Yam — a network of horse stations spaced around 40 km apart across Central Asia. Merchants and diplomats could travel thousands of kilometres rapidly, and some routes carried mail free of charge.",
+        url:"https://en.wikipedia.org/wiki/Yam_(route)", emoji:"🐴" },
+      { title:"Rome and Carthage Were Technically at War for 2,100 Years",
+        text:"The Third Punic War ended in 146 BC but no peace treaty was ever signed. In 1985 the mayors of Rome and Carthage (modern Tunis) signed a symbolic peace treaty — meaning the two cities were technically in a state of war for over 2,100 years.",
+        url:"https://en.wikipedia.org/wiki/Punic_Wars", emoji:"⚔️" },
+    ]
+  },
+
+  space: {
+    name:"Space", icon:"🚀", theme:"theme-space",
+    facts:[
+      { title:"A Day on Venus is Longer Than Its Year",
+        text:"Venus rotates so slowly on its axis that one Venusian day (243 Earth days) is longer than one Venusian year (225 Earth days). It also rotates in the opposite direction to most planets — on Venus, the Sun rises in the west and sets in the east.",
+        url:"https://en.wikipedia.org/wiki/Venus", emoji:"🌟" },
+      { title:"The Sun's Light is 8 Minutes Old",
+        text:"Light from the Sun takes about 8 minutes and 20 seconds to reach Earth. This means we always see the Sun as it was over 8 minutes ago — and if the Sun suddenly vanished, we would not know for another 8 minutes.",
+        url:"https://en.wikipedia.org/wiki/Sun", emoji:"☀️" },
+      { title:"Saturn Would Float on Water",
+        text:"Saturn is the least dense planet in the Solar System — with an average density of just 0.687 g/cm³, less than water. If you could find a bathtub large enough, Saturn would float in it.",
+        url:"https://en.wikipedia.org/wiki/Saturn", emoji:"🪐" },
+      { title:"Space is Completely Silent",
+        text:"Sound requires a medium like air or water to travel through. In the vacuum of space there are so few molecules that sound waves cannot propagate. Explosions, rocket engines, and colliding planets would all be utterly silent to any nearby observer.",
+        url:"https://en.wikipedia.org/wiki/Outer_space", emoji:"🌌" },
+      { title:"Olympus Mons is the Tallest Mountain in the Solar System",
+        text:"Olympus Mons on Mars stands about 21.9 km above the Martian surface — nearly three times the height of Mount Everest above sea level. It is so wide (550 km across) that a person standing at the edge could not see the summit due to the planet's curvature.",
+        url:"https://en.wikipedia.org/wiki/Olympus_Mons", emoji:"🏔️" },
+      { title:"There are More Stars Than Grains of Sand on Earth",
+        text:"The observable universe contains an estimated 2 trillion galaxies, each containing hundreds of billions of stars. The total number of stars — around 10²⁴ — is estimated to be greater than the number of grains of sand on all of Earth's beaches and deserts combined.",
+        url:"https://en.wikipedia.org/wiki/Observable_universe", emoji:"✨" },
+      { title:"Voyager 1 is in Interstellar Space",
+        text:"Launched in 1977, Voyager 1 became the first human-made object to enter interstellar space in 2012. It is now over 23 billion kilometres from Earth, and its radio signals — travelling at the speed of light — take more than 22 hours to reach us.",
+        url:"https://en.wikipedia.org/wiki/Voyager_1", emoji:"🛸" },
+      { title:"A Year on Mercury is Shorter Than Its Day",
+        text:"Mercury orbits the Sun in just 88 Earth days, but its rotation is so slow that one Mercury day lasts 176 Earth days. A single Mercury year is therefore shorter than a single Mercury day — making its calendar deeply confusing.",
+        url:"https://en.wikipedia.org/wiki/Mercury_(planet)", emoji:"🌑" },
+    ]
+  },
+
+  body: {
+    name:"Human Body", icon:"🧠", theme:"theme-body",
+    facts:[
+      { title:"Your Brain is 60% Fat",
+        text:"The human brain is the fattiest organ in the body, with about 60% of its dry weight made up of fat. The fatty myelin sheaths that insulate nerve fibres are critical for rapid signal transmission — and are why dietary fats are important for brain health.",
+        url:"https://en.wikipedia.org/wiki/Human_brain", emoji:"🧠" },
+      { title:"You Have More Bacteria Than Human Cells",
+        text:"Your body contains roughly 38 trillion bacteria compared to about 30 trillion human cells. Most live in your gut and are essential for digestion, immunity, and even mood regulation through the gut-brain axis.",
+        url:"https://en.wikipedia.org/wiki/Human_microbiome", emoji:"🦠" },
+      { title:"Bones are Stronger Than Steel by Weight",
+        text:"Pound for pound, human bone is stronger than steel — it can withstand about 170 MPa of compressive stress before breaking. The catch is bone is also five times lighter than steel, which is what gives the skeleton its remarkable strength-to-weight ratio.",
+        url:"https://en.wikipedia.org/wiki/Bone", emoji:"🦴" },
+      { title:"Your Eyes Can Detect a Single Photon",
+        text:"Under ideal conditions — in complete darkness after about 20 minutes of adaptation — the human eye can detect a single photon of light. The retinal rod cells are so sensitive that one quantum of light is theoretically enough to trigger a visual signal.",
+        url:"https://en.wikipedia.org/wiki/Human_eye", emoji:"👁️" },
+      { title:"The Heart Beats 3 Billion Times in a Lifetime",
+        text:"The average human heart beats about 100,000 times per day, which adds up to roughly 3 billion beats over a 80-year lifetime. It pumps around 7,000 litres of blood per day through about 100,000 km of blood vessels.",
+        url:"https://en.wikipedia.org/wiki/Heart", emoji:"❤️" },
+      { title:"Your Stomach Gets a New Lining Every Few Days",
+        text:"The stomach produces powerful hydrochloric acid that would digest its own walls — so it regenerates its entire mucosal lining approximately every 3 to 5 days. Without this rapid renewal, the stomach would literally eat itself.",
+        url:"https://en.wikipedia.org/wiki/Stomach", emoji:"🫀" },
+      { title:"Humans Glow in the Dark",
+        text:"The human body emits a tiny amount of visible light — biophotons — produced as a byproduct of metabolic processes. This glow is about 1,000 times weaker than the human eye can detect, but sensitive cameras have captured it, with the face glowing brightest in the afternoon.",
+        url:"https://en.wikipedia.org/wiki/Biophoton", emoji:"✨" },
+      { title:"The Liver Can Fully Regenerate",
+        text:"The liver is the only internal human organ capable of natural regeneration. As little as 25% of the original liver mass can regenerate back to full size. This is why living-donor liver transplants are possible — the donor's liver regrows within weeks.",
+        url:"https://en.wikipedia.org/wiki/Liver", emoji:"🫁" },
+    ]
+  },
+
+  weird: {
+    name:"Weird Facts", icon:"🤯", theme:"theme-weird",
+    facts:[
+      { title:"Fax Machines Predate the Telephone",
+        text:"The fax machine was invented in 1843 by Scottish inventor Alexander Bain — more than 30 years before Alexander Graham Bell patented the telephone in 1876. Early fax systems used a pendulum and electrochemical paper to transmit images over telegraph wires.",
+        url:"https://en.wikipedia.org/wiki/Fax", emoji:"📠" },
+      { title:"Carrots Were Originally Purple",
+        text:"Wild carrots were typically purple or white. Orange carrots were selectively bred by Dutch growers in the 17th century, reputedly in honour of the House of Orange. The orange carrot then spread worldwide, almost entirely replacing its purple predecessors.",
+        url:"https://en.wikipedia.org/wiki/Carrot", emoji:"🥕" },
+      { title:"Nintendo Was Founded in 1889",
+        text:"Before making video games, Nintendo was a playing-card company founded in Kyoto in 1889. It produced traditional Japanese hanafuda cards, and later Western-style playing cards, before pivoting to electronic toys in the 1960s and video games in the 1970s.",
+        url:"https://en.wikipedia.org/wiki/Nintendo", emoji:"🎮" },
+      { title:"A Group of Flamingos is Called a Flamboyance",
+        text:"Collective animal names can be wonderfully odd: a group of flamingos is a 'flamboyance', a group of owls is a 'parliament', a group of crows is a 'murder', and a group of cats is a 'clowder'. Most of these terms date back to 15th-century hunting vocabulary.",
+        url:"https://en.wikipedia.org/wiki/Flamingo", emoji:"🦩" },
+      { title:"Cleopatra's Time is Closer to Pizza Hut Than to the Pyramids",
+        text:"Cleopatra (died 30 BC) lived about 2,500 years after the Great Pyramid was built (~2560 BC), but only about 2,000 years before the founding of Pizza Hut in 1958. The ancient world is far older than our intuition suggests.",
+        url:"https://en.wikipedia.org/wiki/Cleopatra", emoji:"🍕" },
+      { title:"There Are More Possible Chess Games Than Atoms in the Universe",
+        text:"The number of possible unique chess games is estimated at around 10¹²⁰ — a number called the Shannon Number. The total number of atoms in the observable universe is only around 10⁸⁰. Chess has more possible games than atoms in existence.",
+        url:"https://en.wikipedia.org/wiki/Shannon_number", emoji:"♟️" },
+      { title:"Hot Water Can Freeze Faster Than Cold Water",
+        text:"Under certain conditions, hot water freezes faster than cold water — a phenomenon known as the Mpemba effect. First documented by a Tanzanian student named Erasto Mpemba in 1963, the exact cause is still debated by physicists today.",
+        url:"https://en.wikipedia.org/wiki/Mpemba_effect", emoji:"🧊" },
+      { title:"You Can't Hum While Holding Your Nose",
+        text:"Try it — holding your nose closed makes it impossible to hum, because humming requires air to escape through the nasal passage. The sound of humming is produced by the vocal cords, but the resonance and airflow that give it character are entirely nasal.",
+        url:"https://en.wikipedia.org/wiki/Humming", emoji:"🎵" },
+    ]
+  },
+
+};
+
+// ═══════════════════════════════════════════════════════════
+//  SEEDED RNG — same picks every day, different each day
+// ═══════════════════════════════════════════════════════════
+function seededRandom(seed) {
+  let s = seed >>> 0;
+  return () => {
+    s = Math.imul(s ^ (s >>> 15), 1 | s);
+    s ^= s + Math.imul(s ^ (s >>> 7), 61 | s);
+    return ((s ^ (s >>> 14)) >>> 0) / 0x100000000;
+  };
+}
+
+function todayKey() {
+  const d = new Date();
+  return `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,"0")}${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function todayLabel() {
+  return new Date().toLocaleDateString("en-US",{weekday:"short",year:"numeric",month:"long",day:"numeric"});
+}
+
+function todayShort() {
+  return new Date().toLocaleDateString("en-US",{month:"short",day:"numeric",year:"numeric"});
+}
+
+// ═══════════════════════════════════════════════════════════
+//  PICK TODAY'S 5 FACTS
+// ═══════════════════════════════════════════════════════════
+const STORAGE_KEY = "factdaily_v4";
+
+function pickFacts() {
+  const cached = (() => {
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (!raw) return null;
+      const d = JSON.parse(raw);
+      return Array.isArray(d) && d[0]?.dateKey === todayKey() ? d : null;
+    } catch { return null; }
+  })();
+  if (cached) return cached;
+
+  const rng = seededRandom(parseInt(todayKey()));
+  const categories = Object.values(POOL);
+
+  // Shuffle category order for the day
+  const cats = [...categories].sort(() => rng() - 0.5);
+  const picked = cats.slice(0, 5);
+
+  const facts = picked.map(cat => {
+    // Pick one fact from this category's pool
+    const idx = Math.floor(rng() * cat.facts.length);
+    const f = cat.facts[idx];
+    return {
+      dateKey:      todayKey(),
+      category:     cat.name,
+      categoryIcon: cat.icon,
+      theme:        cat.theme,
+      title:        f.title,
+      text:         f.text,
+      url:          f.url,
+      emoji:        f.emoji,
+      image:        null,   // filled in later by background fetch
+    };
+  });
+
+  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(facts)); } catch {}
+  return facts;
+}
+
+// ═══════════════════════════════════════════════════════════
+//  TRY TO LOAD WIKIPEDIA IMAGE IN BACKGROUND (optional)
+// ═══════════════════════════════════════════════════════════
+async function tryLoadImage(fact, index) {
+  // Extract article title from Wikipedia URL
+  const match = fact.url.match(/\/wiki\/(.+)$/);
+  if (!match) return;
+  const title = decodeURIComponent(match[1]);
+  try {
+    const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+    if (!res.ok) return;
+    const data = await res.json();
+    if (!data.thumbnail?.source) return;
+    // Update the image in the DOM if this card is visible
+    const wrap = document.getElementById(`img-wrap-${index}`);
+    if (wrap) {
+      wrap.innerHTML = `<img src="${data.thumbnail.source}" alt="${escHtml(fact.title)}" loading="lazy"/>`;
+    }
+    // Update cache
+    try {
+      const raw = localStorage.getItem(STORAGE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (Array.isArray(cached) && cached[index]) {
+          cached[index].image = data.thumbnail.source;
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(cached));
+        }
+      }
+    } catch {}
+  } catch { /* silently ignore — images are optional */ }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  STATE
+// ═══════════════════════════════════════════════════════════
+let facts   = [];
+let current = 0;
+
+// ═══════════════════════════════════════════════════════════
+//  HELPERS
+// ═══════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+function escHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// ═══════════════════════════════════════════════════════════
+//  BUILD & RENDER A CARD
+// ═══════════════════════════════════════════════════════════
+function buildCard(fact, index) {
+  const el = document.createElement("article");
+  el.className = `card ${fact.theme}`;
+  el.id = `card-${index}`;
+
+  const imageHtml = fact.image
+    ? `<img src="${escHtml(fact.image)}" alt="${escHtml(fact.title)}" loading="lazy"/>`
+    : `<span class="img-placeholder">${fact.emoji}</span>`;
+
+  el.innerHTML = `
+    <div class="card-toprow">
+      <h2 class="fact-title">${escHtml(fact.title)}</h2>
+      <span class="fact-counter">${index + 1}/${facts.length}</span>
+    </div>
+    <div class="fact-image-wrap" id="img-wrap-${index}">${imageHtml}</div>
+
+    <div class="fact-text-wrap"><p class="fact-text">${escHtml(fact.text)}</p></div>
+
+    <div class="card-rule"></div>
+
+    <div class="tags-row">
+      <span class="pill pill-cat">${escHtml(fact.category)}</span>
+      <a class="cta" href="${escHtml(fact.url)}" target="_blank" rel="noopener">
+        Read more
+        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="7" y1="17" x2="17" y2="7"/><polyline points="7 7 17 7 17 17"/>
+        </svg>
+      </a>
+    </div>
+  `;
+  return el;
+}
+
+let transitioning = false;
+
+function showCard(index, direction) {
+  const deck = $("deck");
+  const f    = facts[index];
+
+  const doShow = () => {
+    deck.className = `deck ${f.theme}`;
+    const card = buildCard(f, index);
+    card.classList.add(direction >= 0 ? "card-enter-right" : "card-enter-left");
+    deck.appendChild(card);
+    updateDots(index);
+    $("btn-prev").disabled = index === 0;
+    $("btn-next").disabled = index === facts.length - 1;
+    if (!f.image) tryLoadImage(f, index);
+    setTimeout(() => { transitioning = false; }, 380);
+  };
+
+  const old = deck.querySelector(".card");
+  if (old) {
+    transitioning = true;
+    old.classList.add(direction >= 0 ? "card-exit-left" : "card-exit-right");
+    setTimeout(() => { old.remove(); doShow(); }, 420);
+  } else {
+    doShow();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+//  DOTS
+// ═══════════════════════════════════════════════════════════
+function buildDots() {
+  const container = $("dots");
+  container.innerHTML = "";
+  facts.forEach((_, i) => {
+    const btn = document.createElement("button");
+    btn.className = "dot" + (i === 0 ? " active" : "");
+    btn.setAttribute("aria-label", `Fact ${i+1}`);
+    btn.onclick = () => goTo(i);
+    container.appendChild(btn);
+  });
+}
+
+function updateDots(active) {
+  document.querySelectorAll(".dot").forEach((d, i) => {
+    d.classList.toggle("active", i === active);
+    d.classList.toggle("done",   i < active);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+//  NAVIGATION
+// ═══════════════════════════════════════════════════════════
+function navigate(dir) {
+  if (transitioning) return;
+  const next = current + dir;
+  if (next < 0 || next >= facts.length) return;
+  current = next;
+  showCard(current, dir);
+}
+
+function goTo(index) {
+  if (transitioning || index === current) return;
+  const dir = index > current ? 1 : -1;
+  current = index;
+  showCard(current, dir);
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "ArrowRight" || e.key === "ArrowDown") navigate(1);
+  if (e.key === "ArrowLeft"  || e.key === "ArrowUp")   navigate(-1);
+});
+
+let touchStartX = 0;
+document.addEventListener("touchstart", e => { touchStartX = e.touches[0].clientX; }, {passive:true});
+document.addEventListener("touchend",   e => {
+  const dx = e.changedTouches[0].clientX - touchStartX;
+  if (Math.abs(dx) > 50) navigate(dx < 0 ? 1 : -1);
+}, {passive:true});
+
+// ═══════════════════════════════════════════════════════════
+//  BOOT
+// ═══════════════════════════════════════════════════════════
+document.addEventListener("DOMContentLoaded", () => {
+  const hd = $("hero-date");
+  if (hd) hd.textContent = todayLabel();
+  facts = pickFacts();
+  showCard(0, 1);
+});
+</script>
+</body>
+</html>
