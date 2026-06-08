@@ -93,6 +93,20 @@
     .carousel-dots{position:absolute;bottom:8px;left:0;right:0;display:flex;justify-content:center;gap:5px;pointer-events:none}
     .cdot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);transition:all .2s ease}
     .cdot.active{background:#fff;transform:scale(1.25)}
+    .carousel-btn{position:absolute;top:50%;transform:translateY(-50%);z-index:5;width:28px;height:28px;border-radius:50%;background:rgba(255,255,255,.8);border:none;backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;cursor:pointer;color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.15);transition:background .15s,opacity .15s}
+    .carousel-btn-prev{left:8px}
+    .carousel-btn-next{right:8px}
+    .carousel-btn:hover{background:#fff}
+    .carousel-btn:disabled{opacity:.2;pointer-events:none}
+    /* Desktop: only show on hover */
+    @media(hover:hover){
+      .carousel-btn{opacity:0}
+      .carousel:hover .carousel-btn:not(:disabled){opacity:1}
+    }
+    /* Touch: always show */
+    @media(hover:none){
+      .carousel-btn{opacity:1}
+    }
 
     .fact-text-wrap{flex:1;overflow:hidden;position:relative;margin-bottom:1.2rem}
     .fact-text-wrap::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2.5rem;background:linear-gradient(transparent,#fff);pointer-events:none}
@@ -379,7 +393,7 @@ function todayShort() {
 // ═══════════════════════════════════════════════════════════
 //  PICK TODAY'S 5 FACTS
 // ═══════════════════════════════════════════════════════════
-const STORAGE_KEY = "factdaily_v5";
+const STORAGE_KEY = "factdaily_v7";
 
 function pickFacts() {
   const cached = (() => {
@@ -427,51 +441,103 @@ async function tryLoadImages(fact, index) {
   const match = fact.url.match(/\/wiki\/(.+)$/);
   if (!match) return;
   const title = decodeURIComponent(match[1]);
+
+  const fixUrl = src => {
+    if (!src) return null;
+    src = src.replace(/^\/\//, 'https://');
+    if (!/^https?:\/\//.test(src)) src = 'https:' + src;
+    return src;
+  };
+
+  const isUsable = src => {
+    if (!src) return false;
+    if (/\.svg$/i.test(src)) return false;
+    if (/\.(ogg|ogv|webm|pdf|mid|midi)$/i.test(src)) return false;
+    if (/(logo|icon|flag|symbol|seal|coat|question.mark|padlock|OOjs|nuvola|portal|disambig|edit.icon|pictogram|commons-logo|wiki.letter)/i.test(src)) return false;
+    return true;
+  };
+
   try {
-    const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/media-list/${encodeURIComponent(title)}`);
-    if (!res.ok) return;
-    const data = await res.json();
-    const images = (data.items || [])
-      .filter(item => {
-        if (item.type !== 'image') return false;
-        const src = (item.srcset?.[0]?.src || item.src || '');
-        // skip SVGs, icons, logos, flags, small decoratives
-        return src && !src.match(/\.(svg)$/i) && !src.match(/(logo|icon|flag|commons|wiki-letter|symbol|seal|coa|coat)/i);
-      })
-      .map(item => {
-        const srcset = item.srcset || [];
-        return srcset.length ? srcset[srcset.length - 1].src : item.src;
-      })
-      .filter(Boolean)
-      .slice(0, 3);
+    const images = [];
+
+    // 1. Summary thumbnail — most reliable single image
+    try {
+      const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+      if (r.ok) {
+        const d = await r.json();
+        const src = fixUrl(d.originalimage?.source || d.thumbnail?.source);
+        if (src && isUsable(src)) images.push(src);
+      }
+    } catch {}
+
+    // 2. Media-list for additional images
+    try {
+      const r = await fetch(`https://en.wikipedia.org/api/rest_v1/page/media-list/${encodeURIComponent(title)}`);
+      if (r.ok) {
+        const d = await r.json();
+        for (const item of (d.items || [])) {
+          if (images.length >= 3) break;
+          if (item.type !== 'image') continue;
+          // srcset can be array of {src, scale} or {src, width}
+          const srcset = Array.isArray(item.srcset) ? item.srcset : [];
+          const best = srcset.length ? srcset[srcset.length - 1].src : (item.src || '');
+          const src = fixUrl(best);
+          if (src && isUsable(src) && !images.some(u => u.includes(src.split('/').pop().split('?')[0]))) {
+            images.push(src);
+          }
+        }
+      }
+    } catch {}
 
     if (!images.length) return;
 
-    // Update carousel in DOM
-    const track = document.querySelector(`#carousel-${index} .carousel-track`);
-    const dotsEl = document.querySelector(`#carousel-${index} .carousel-dots`);
-    if (!track) return;
+    // ── Update in-memory fact so navigation re-uses images ──
+    facts[index].images = images;
 
-    track.innerHTML = images.map(src =>
-      `<div class="carousel-slide"><img src="${escHtml(src)}" loading="lazy"/></div>`
-    ).join('');
+    // ── Update DOM carousel ──
+    const carousel = document.getElementById(`carousel-${index}`);
+    if (carousel) {
+      const track  = carousel.querySelector('.carousel-track');
+      const dotsEl = carousel.querySelector('.carousel-dots');
 
-    if (dotsEl) {
-      dotsEl.innerHTML = images.map((_, i) =>
-        `<span class="cdot${i === 0 ? ' active' : ''}"></span>`
-      ).join('');
-      dotsEl.style.display = images.length > 1 ? 'flex' : 'none';
+      if (track) {
+        track.innerHTML = images.map(src =>
+          `<div class="carousel-slide"><img src="${escHtml(src)}" loading="eager" decoding="async"/></div>`
+        ).join('');
+      }
+
+      if (images.length > 1) {
+        // Inject chevrons if not already present
+        if (!carousel.querySelector('.carousel-btn-prev')) {
+          const prevBtn = document.createElement('button');
+          prevBtn.className = 'carousel-btn carousel-btn-prev';
+          prevBtn.setAttribute('aria-label', 'Previous image');
+          prevBtn.disabled = true;
+          prevBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>`;
+          track.insertAdjacentElement('beforebegin', prevBtn);
+
+          const nextBtn = document.createElement('button');
+          nextBtn.className = 'carousel-btn carousel-btn-next';
+          nextBtn.setAttribute('aria-label', 'Next image');
+          nextBtn.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>`;
+          track.insertAdjacentElement('afterend', nextBtn);
+        }
+
+        if (dotsEl) {
+          dotsEl.innerHTML = images.map((_, i) =>
+            `<span class="cdot${i === 0 ? ' active' : ''}"></span>`
+          ).join('');
+          dotsEl.style.display = 'flex';
+        }
+
+        wireCarousel(index, images.length);
+
+      } else {
+        if (dotsEl) dotsEl.style.display = 'none';
+      }
     }
 
-    // Sync dots on scroll
-    if (images.length > 1) {
-      track.addEventListener('scroll', () => {
-        const idx = Math.round(track.scrollLeft / track.offsetWidth);
-        dotsEl.querySelectorAll('.cdot').forEach((d, i) => d.classList.toggle('active', i === idx));
-      }, {passive: true});
-    }
-
-    // Update cache
+    // ── Persist to localStorage ──
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
@@ -482,7 +548,10 @@ async function tryLoadImages(fact, index) {
         }
       }
     } catch {}
-  } catch {}
+
+  } catch (e) {
+    console.warn('tryLoadImages failed:', e);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -496,6 +565,41 @@ let current = 0;
 // ═══════════════════════════════════════════════════════════
 const $ = id => document.getElementById(id);
 function escHtml(s){ return String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+
+// ═══════════════════════════════════════════════════════════
+//  WIRE CAROUSEL — attach scroll sync + chevron clicks
+//  Called from both buildCard (cached) and tryLoadImages (fresh)
+// ═══════════════════════════════════════════════════════════
+function wireCarousel(index, imageCount) {
+  const carousel = document.getElementById(`carousel-${index}`);
+  if (!carousel || imageCount < 2) return;
+
+  const track   = carousel.querySelector('.carousel-track');
+  const dotsEl  = carousel.querySelector('.carousel-dots');
+  const btnPrev = carousel.querySelector('.carousel-btn-prev');
+  const btnNext = carousel.querySelector('.carousel-btn-next');
+  if (!track) return;
+
+  const updateNav = () => {
+    const idx = Math.round(track.scrollLeft / track.offsetWidth);
+    if (dotsEl) dotsEl.querySelectorAll('.cdot').forEach((d, i) => d.classList.toggle('active', i === idx));
+    if (btnPrev) btnPrev.disabled = idx === 0;
+    if (btnNext) btnNext.disabled = idx === imageCount - 1;
+  };
+
+  track.addEventListener('scroll', updateNav, {passive: true});
+
+  if (btnPrev) btnPrev.addEventListener('click', e => {
+    e.stopPropagation();
+    e.preventDefault();
+    track.scrollBy({left: -track.offsetWidth, behavior: 'smooth'});
+  });
+  if (btnNext) btnNext.addEventListener('click', e => {
+    e.stopPropagation();
+    e.preventDefault();
+    track.scrollBy({left: track.offsetWidth, behavior: 'smooth'});
+  });
+}
 
 // ═══════════════════════════════════════════════════════════
 //  BUILD & RENDER A CARD
@@ -513,13 +617,21 @@ function buildCard(fact, index) {
     ? cachedImages.map((_, i) => `<span class="cdot${i === 0 ? ' active' : ''}"></span>`).join('')
     : '';
 
+  const hasMultiple = cachedImages.length > 1;
+
   el.innerHTML = `
     <div class="card-toprow">
       <h2 class="fact-title">${escHtml(fact.title)}</h2>
       <span class="fact-counter">${index + 1}/${facts.length}</span>
     </div>
     <div class="carousel" id="carousel-${index}">
+      ${hasMultiple ? `<button class="carousel-btn carousel-btn-prev" aria-label="Previous image" disabled>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>` : ''}
       <div class="carousel-track">${slidesHtml}</div>
+      ${hasMultiple ? `<button class="carousel-btn carousel-btn-next" aria-label="Next image">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>` : ''}
       <div class="carousel-dots" style="${dotsHtml ? '' : 'display:none'}">${dotsHtml}</div>
     </div>
 
@@ -537,6 +649,11 @@ function buildCard(fact, index) {
       </a>
     </div>
   `;
+  // Wire carousel interactions now that DOM is ready
+  if (cachedImages.length > 1) {
+    // Use setTimeout so the element is fully in DOM before wiring
+    setTimeout(() => wireCarousel(index, cachedImages.length), 0);
+  }
   return el;
 }
 
@@ -554,7 +671,6 @@ function showCard(index, direction) {
     updateDots(index);
     $("btn-prev").disabled = index === 0;
     $("btn-next").disabled = index === facts.length - 1;
-    if (!f.images?.length) tryLoadImages(f, index);
     setTimeout(() => { transitioning = false; }, 380);
   };
 
@@ -630,8 +746,8 @@ function getCard() {
 
 function onDragStart(clientX, clientY, target) {
   if (transitioning) return;
-  // Don't hijack horizontal scroll inside the image carousel
-  if (target && target.closest('.carousel-track')) return;
+  // Don't hijack horizontal scroll inside the image carousel or chevron buttons
+  if (target && (target.closest('.carousel-track') || target.closest('.carousel-btn'))) return;
   dragCard = getCard();
   if (!dragCard) return;
   dragging   = true;
@@ -729,6 +845,10 @@ document.addEventListener("DOMContentLoaded", () => {
   if (hd) hd.textContent = todayLabel();
   facts = pickFacts();
   showCard(0, 1);
+  // Pre-fetch images for all facts in background
+  facts.forEach((f, i) => {
+    if (!f.images?.length) tryLoadImages(f, i);
+  });
 });
 </script>
 </body>
