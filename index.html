@@ -83,10 +83,16 @@
 
     .fact-date{font-size:.74rem;color:var(--ink-soft);margin-bottom:1rem}
 
-    .fact-image-wrap{border-radius:12px;overflow:hidden;margin-bottom:1.1rem;border:1px solid rgba(0,0,0,.05);background:#f0eef8;min-height:60px;display:flex;align-items:center;justify-content:center}
-    .fact-image-wrap img{max-height:220px;object-fit:cover;width:100%;transition:transform .5s ease}
-    .fact-image-wrap:hover img{transform:scale(1.03)}
+    /* Carousel */
+    .carousel{border-radius:12px;overflow:hidden;margin-bottom:1.1rem;border:1px solid rgba(0,0,0,.05);background:#f0eef8;position:relative}
+    .carousel-track{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none;-ms-overflow-style:none;-webkit-overflow-scrolling:touch}
+    .carousel-track::-webkit-scrollbar{display:none}
+    .carousel-slide{flex:0 0 100%;scroll-snap-align:start;display:flex;align-items:center;justify-content:center;min-height:160px}
+    .carousel-slide img{width:100%;height:200px;object-fit:cover;display:block}
     .img-placeholder{font-size:3rem;padding:1.5rem}
+    .carousel-dots{position:absolute;bottom:8px;left:0;right:0;display:flex;justify-content:center;gap:5px;pointer-events:none}
+    .cdot{width:6px;height:6px;border-radius:50%;background:rgba(255,255,255,.5);transition:all .2s ease}
+    .cdot.active{background:#fff;transform:scale(1.25)}
 
     .fact-text-wrap{flex:1;overflow:hidden;position:relative;margin-bottom:1.2rem}
     .fact-text-wrap::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2.5rem;background:linear-gradient(transparent,#fff);pointer-events:none}
@@ -373,7 +379,7 @@ function todayShort() {
 // ═══════════════════════════════════════════════════════════
 //  PICK TODAY'S 5 FACTS
 // ═══════════════════════════════════════════════════════════
-const STORAGE_KEY = "factdaily_v4";
+const STORAGE_KEY = "factdaily_v5";
 
 function pickFacts() {
   const cached = (() => {
@@ -417,33 +423,66 @@ function pickFacts() {
 // ═══════════════════════════════════════════════════════════
 //  TRY TO LOAD WIKIPEDIA IMAGE IN BACKGROUND (optional)
 // ═══════════════════════════════════════════════════════════
-async function tryLoadImage(fact, index) {
-  // Extract article title from Wikipedia URL
+async function tryLoadImages(fact, index) {
   const match = fact.url.match(/\/wiki\/(.+)$/);
   if (!match) return;
   const title = decodeURIComponent(match[1]);
   try {
-    const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(title)}`);
+    const res = await fetch(`https://en.wikipedia.org/api/rest_v1/page/media-list/${encodeURIComponent(title)}`);
     if (!res.ok) return;
     const data = await res.json();
-    if (!data.thumbnail?.source) return;
-    // Update the image in the DOM if this card is visible
-    const wrap = document.getElementById(`img-wrap-${index}`);
-    if (wrap) {
-      wrap.innerHTML = `<img src="${data.thumbnail.source}" alt="${escHtml(fact.title)}" loading="lazy"/>`;
+    const images = (data.items || [])
+      .filter(item => {
+        if (item.type !== 'image') return false;
+        const src = (item.srcset?.[0]?.src || item.src || '');
+        // skip SVGs, icons, logos, flags, small decoratives
+        return src && !src.match(/\.(svg)$/i) && !src.match(/(logo|icon|flag|commons|wiki-letter|symbol|seal|coa|coat)/i);
+      })
+      .map(item => {
+        const srcset = item.srcset || [];
+        return srcset.length ? srcset[srcset.length - 1].src : item.src;
+      })
+      .filter(Boolean)
+      .slice(0, 3);
+
+    if (!images.length) return;
+
+    // Update carousel in DOM
+    const track = document.querySelector(`#carousel-${index} .carousel-track`);
+    const dotsEl = document.querySelector(`#carousel-${index} .carousel-dots`);
+    if (!track) return;
+
+    track.innerHTML = images.map(src =>
+      `<div class="carousel-slide"><img src="${escHtml(src)}" loading="lazy"/></div>`
+    ).join('');
+
+    if (dotsEl) {
+      dotsEl.innerHTML = images.map((_, i) =>
+        `<span class="cdot${i === 0 ? ' active' : ''}"></span>`
+      ).join('');
+      dotsEl.style.display = images.length > 1 ? 'flex' : 'none';
     }
+
+    // Sync dots on scroll
+    if (images.length > 1) {
+      track.addEventListener('scroll', () => {
+        const idx = Math.round(track.scrollLeft / track.offsetWidth);
+        dotsEl.querySelectorAll('.cdot').forEach((d, i) => d.classList.toggle('active', i === idx));
+      }, {passive: true});
+    }
+
     // Update cache
     try {
       const raw = localStorage.getItem(STORAGE_KEY);
       if (raw) {
         const cached = JSON.parse(raw);
         if (Array.isArray(cached) && cached[index]) {
-          cached[index].image = data.thumbnail.source;
+          cached[index].images = images;
           localStorage.setItem(STORAGE_KEY, JSON.stringify(cached));
         }
       }
     } catch {}
-  } catch { /* silently ignore — images are optional */ }
+  } catch {}
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -466,16 +505,23 @@ function buildCard(fact, index) {
   el.className = `card ${fact.theme}`;
   el.id = `card-${index}`;
 
-  const imageHtml = fact.image
-    ? `<img src="${escHtml(fact.image)}" alt="${escHtml(fact.title)}" loading="lazy"/>`
-    : `<span class="img-placeholder">${fact.emoji}</span>`;
+  const cachedImages = fact.images || [];
+  const slidesHtml = cachedImages.length
+    ? cachedImages.map(src => `<div class="carousel-slide"><img src="${escHtml(src)}" loading="lazy"/></div>`).join('')
+    : `<div class="carousel-slide"><span class="img-placeholder">${fact.emoji}</span></div>`;
+  const dotsHtml = cachedImages.length > 1
+    ? cachedImages.map((_, i) => `<span class="cdot${i === 0 ? ' active' : ''}"></span>`).join('')
+    : '';
 
   el.innerHTML = `
     <div class="card-toprow">
       <h2 class="fact-title">${escHtml(fact.title)}</h2>
       <span class="fact-counter">${index + 1}/${facts.length}</span>
     </div>
-    <div class="fact-image-wrap" id="img-wrap-${index}">${imageHtml}</div>
+    <div class="carousel" id="carousel-${index}">
+      <div class="carousel-track">${slidesHtml}</div>
+      <div class="carousel-dots" style="${dotsHtml ? '' : 'display:none'}">${dotsHtml}</div>
+    </div>
 
     <div class="fact-text-wrap"><p class="fact-text">${escHtml(fact.text)}</p></div>
 
@@ -508,7 +554,7 @@ function showCard(index, direction) {
     updateDots(index);
     $("btn-prev").disabled = index === 0;
     $("btn-next").disabled = index === facts.length - 1;
-    if (!f.image) tryLoadImage(f, index);
+    if (!f.images?.length) tryLoadImages(f, index);
     setTimeout(() => { transitioning = false; }, 380);
   };
 
@@ -582,8 +628,10 @@ function getCard() {
   return document.querySelector(".card");
 }
 
-function onDragStart(clientX, clientY) {
+function onDragStart(clientX, clientY, target) {
   if (transitioning) return;
+  // Don't hijack horizontal scroll inside the image carousel
+  if (target && target.closest('.carousel-track')) return;
   dragCard = getCard();
   if (!dragCard) return;
   dragging   = true;
@@ -633,7 +681,7 @@ function onDragEnd(clientX) {
         updateDots(current);
         $("btn-prev").disabled = current === 0;
         $("btn-next").disabled = current === facts.length - 1;
-        if (!f.image) tryLoadImage(f, current);
+        if (!f.images?.length) tryLoadImages(f, current);
         setTimeout(() => { transitioning = false; }, 400);
       } else {
         transitioning = false;
@@ -651,7 +699,7 @@ function onDragEnd(clientX) {
 
 // Touch
 document.addEventListener("touchstart", e => {
-  onDragStart(e.touches[0].clientX, e.touches[0].clientY);
+  onDragStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
 }, {passive:true});
 
 document.addEventListener("touchmove", e => {
@@ -664,7 +712,7 @@ document.addEventListener("touchend", e => {
 
 // Mouse (for desktop testing)
 document.addEventListener("mousedown", e => {
-  if (e.target.closest(".card")) onDragStart(e.clientX, e.clientY);
+  if (e.target.closest(".card")) onDragStart(e.clientX, e.clientY, e.target);
 });
 document.addEventListener("mousemove", e => {
   if (dragging) onDragMove(e.clientX);
